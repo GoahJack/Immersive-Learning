@@ -1,0 +1,59 @@
+# 沉浸学习
+
+面向 Windows 的个人学习陪伴软件，支持纸质课本、网页 / B 站课程和本地文件。
+
+首版包含学习计划、重复提醒、专注计时、进度记录、每日与每周统计、系统托盘以及默认隐藏的灵动岛提醒。数据保留在本机，无需账户。
+
+## 使用
+
+安装包位于 `release/StudyCompanion-0.1.1-Setup.exe`；解压版目录为 `release/win-unpacked/`，其中 `沉浸学习.exe` 可以直接启动，须保留整个目录。打包产物不纳入版本控制。
+
+1. 新建任务，填写材料、目标、时长及提醒时间。
+2. 到点从灵动岛开始，或从“今天”手动开始；可以先学 5 分钟。
+3. 关闭主窗口后继续在托盘运行。双击托盘图标打开，右键可以暂停、继续、记录或退出。
+4. 结束时留下进度与下一步，下次接着学。
+
+电脑睡眠、锁屏后会暂停计时，需要手动继续。关机、睡眠或彻底退出时无法准时提醒，回来后汇总待处理任务。开机启动默认关闭，仅安装版本支持开启。
+
+## 开发与检查
+
+使用 Node.js 24 LTS 和 npm，在项目根目录执行：
+
+```powershell
+npm ci
+npm exec -- install-electron --no
+npm run dev
+```
+
+开发模式支持前端热更新；修改主进程、preload 或核心逻辑后需要退出并重新执行 `npm run dev`。
+
+```powershell
+npm test                 # 核心计时、提醒和保存测试
+npm run build            # 类型检查与生产构建
+npm run test:desktop     # 真实 Electron 桌面自动化，需要可用的 Windows 桌面
+npm start                # 启动已构建应用
+npm run dist             # 生成 Windows x64 NSIS 安装包
+npm run test:packaged     # 对打包后的应用执行桌面测试，需先打包
+```
+
+首次下载依赖、Electron 运行时和打包组件需要网络；日常纸质学习、计时和查看记录无需网络。打开在线课程需要网络。
+
+应用图标已包含在项目中，需要重新生成时执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-icon.ps1`。
+
+## 文档
+
+- [需求和文档导航](docs/README.md)
+- [产品与交互规范](docs/product.md)
+- [技术与数据设计](docs/technical-design.md)
+- [验收场景与验证结果](docs/acceptance.md)
+
+软件尚未经过一周实际学习试用。系统睡眠、锁屏、登录启动、多显示器、安装升级等人工验收结果以验收文档为准，不由自动化测试替代。
+
+## 0.1.1 更新
+
+- 灵动岛根页面和原生窗口同时透明，只保留胶囊本体。
+- 每项计划提供“学习时间”：随时、每周指定星期、指定年月日及时间。
+- 提醒加入独立事件标识、显示就绪与可见性校验；关闭提醒窗口不会销毁窗口。目标完成提醒始终启用，每 20 分钟的阶段提醒仍为可选项。
+- 增加展开/收起、页面切换、对话框、按钮和进度动效，尊重系统减少动态效果设置。
+
+源码仓库：[GoahJack/Immersive-Learning](https://github.com/GoahJack/Immersive-Learning)。每次修改验证后提交并同步；若远端权限不可用，在交付中明确说明。

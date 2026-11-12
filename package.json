@@ -1,0 +1,61 @@
+{
+  "name": "study-companion",
+  "productName": "沉浸学习",
+  "version": "0.1.1",
+  "private": true,
+  "description": "支持纸质课本与在线课程的 Windows 学习陪伴台",
+  "author": "Study Companion",
+  "main": "build/electron/main.js",
+  "scripts": {
+    "dev": "npm run build:main && node scripts/dev.mjs",
+    "build:main": "tsc -p tsconfig.main.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.main.json --noEmit",
+    "build": "npm run typecheck && npm run build:main && vite build",
+    "start": "electron .",
+    "test": "tsx --test tests/*.test.ts",
+    "test:desktop": "npm run build && playwright test",
+    "pack": "npm run build && electron-builder --win --dir",
+    "dist": "npm run build && electron-builder --win nsis",
+    "test:packaged": "node scripts/test-packaged.mjs",
+    "format": "prettier --write core shared electron ui tests scripts/*.mjs *.json *.mts playwright.config.ts index.html"
+  },
+  "build": {
+    "appId": "com.studycompanion.desktop",
+    "productName": "沉浸学习",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "build/**/*",
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "artifactName": "StudyCompanion-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "electron": "45.3.1",
+    "electron-builder": "26.18.0",
+    "prettier": "3.10.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite": "8.3.8"
+  }
+}
