@@ -591,6 +591,59 @@ p {
 .plan-heading p {
   font-size: 12px;
 }
+.task-kind {
+  color: #5774ad;
+}
+.task-kind.kind-weekly {
+  color: #287d6b;
+}
+.task-group + .task-group {
+  border-top: 1px solid var(--line);
+}
+.group-heading {
+  margin: 0;
+  padding: 12px 20px 0;
+}
+.group-heading h3 {
+  color: #60728c;
+  font-size: 12px;
+}
+.group-heading button {
+  font-size: 11px;
+}
+.task-type-choices {
+  display: grid;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.task-type-choices button {
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+  gap: 16px;
+  padding: 20px;
+}
+.task-type-choices button > svg {
+  flex-shrink: 0;
+  color: #5774ad;
+}
+.task-type-choices button > svg:last-child {
+  margin-left: auto;
+}
+.task-type-choices strong,
+.task-type-choices small {
+  display: block;
+}
+.task-type-choices strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.task-type-choices small {
+  margin-top: 6px;
+  line-height: 1.7;
+  color: var(--muted);
+  font-size: 12px;
+}
 .empty {
   padding: 75px 20px;
   text-align: center;

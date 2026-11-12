@@ -81,6 +81,9 @@ test("paper workflow: create, start, pause, resume, record progress and restore 
     await expect(page.getByText("从一件想学的事开始。")).toBeVisible();
     await page.screenshot({ path: "test-results/empty.png" });
     await page.getByRole("button", { name: "新建任务", exact: true }).click();
+    await page
+      .getByRole("button", { name: "新建自由学习", exact: false })
+      .click();
     await page.getByLabel("任务名称").fill("高数 · 极限与连续");
     await page.getByLabel("学习分类").fill("数学");
     await page.getByLabel("本次目标").fill("理解极限定义，完成两道例题");
@@ -125,7 +128,7 @@ test("paper workflow: create, start, pause, resume, record progress and restore 
     expect(
       (await page.evaluate(() => window.study.snapshot())).sessions,
     ).toHaveLength(1);
-    await page.getByRole("button", { name: "学习计划", exact: true }).click();
+    await page.getByRole("button", { name: "自由学习", exact: true }).click();
     await page.getByRole("button", { name: "编辑", exact: true }).click();
     await page.getByLabel("任务名称").fill("高数 · 接续练习");
     await page.getByRole("button", { name: "保存任务", exact: true }).click();
@@ -134,7 +137,7 @@ test("paper workflow: create, start, pause, resume, record progress and restore 
     ).toBeVisible();
     await page.getByRole("button", { name: "归档", exact: true }).click();
     await page.getByRole("button", { name: "确认归档", exact: true }).click();
-    await expect(page.getByText("还没有学习计划")).toBeVisible();
+    await expect(page.getByText("还没有自由学习内容")).toBeVisible();
   } finally {
     await cleanup(app, dir);
   }
@@ -215,6 +218,90 @@ test("closing main preserves process and scheduled island; reminder can start a 
     expect(
       (await page.evaluate(() => window.study.snapshot())).reminders,
     ).toHaveLength(1);
+  } finally {
+    await cleanup(app, dir);
+  }
+});
+
+test("existing weekly, dated and unscheduled tasks stay separate after edit and restart", async () => {
+  const e = new Engine(freshData());
+  e.command({
+    type: "task.save",
+    task: task({
+      name: "旧版听力习惯",
+      schedule: { type: "weekly", days: [1, 3], time: "20:30" },
+    }),
+  });
+  e.command({
+    type: "task.save",
+    task: task({
+      name: "旧版日期计划",
+      schedule: {
+        type: "once",
+        at: new Date(Date.now() + 86400000 * 2).toISOString(),
+      },
+    }),
+  });
+  e.command({ type: "task.save", task: task({ name: "旧版自由学习" }) });
+  const ids = e.data.tasks.map((t) => t.id);
+  e.command({ type: "session.start", taskId: ids[0] });
+  e.command({
+    type: "session.end",
+    id: e.active!.id,
+    progress: "已练习第一组",
+    nextStep: "复习错题",
+  });
+  const history = structuredClone(e.data.sessions);
+  let { app, page, dir } = await launch(e.data);
+  try {
+    for (const [pageName, own, other] of [
+      ["每周习惯", "旧版听力习惯", "旧版日期计划"],
+      ["日期计划", "旧版日期计划", "旧版听力习惯"],
+      ["自由学习", "旧版自由学习", "旧版听力习惯"],
+    ]) {
+      await page.getByRole("button", { name: pageName, exact: true }).click();
+      await expect(
+        page.getByRole("heading", { name: own, exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: other, exact: true }),
+      ).toHaveCount(0);
+    }
+    await page.getByRole("button", { name: "每周习惯", exact: true }).click();
+    await page.getByRole("button", { name: "编辑", exact: true }).click();
+    await page.getByLabel("每周学习时间", { exact: true }).fill("21:15");
+    await page.getByRole("button", { name: "保存任务", exact: true }).click();
+    await page.getByRole("button", { name: "日期计划", exact: true }).click();
+    await page.getByRole("button", { name: "编辑", exact: true }).click();
+    const date = new Date();
+    date.setDate(date.getDate() + 3);
+    const dateValue = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T19:45`;
+    await page.getByLabel("学习日期与时间").fill(dateValue);
+    await page.getByRole("button", { name: "保存任务", exact: true }).click();
+    await app.close();
+    ({ app, page } = await launch(undefined, dir));
+    const saved = await page.evaluate(() => window.study.snapshot());
+    expect(saved.tasks.map((t) => t.id)).toEqual(ids);
+    expect(saved.tasks[0].schedule).toEqual({
+      type: "weekly",
+      days: [1, 3],
+      time: "21:15",
+    });
+    expect(saved.tasks[1].schedule).toEqual({
+      type: "once",
+      at: new Date(dateValue).toISOString(),
+    });
+    expect(saved.tasks[0].progress).toBe("已练习第一组");
+    expect(saved.sessions).toEqual(history);
+    await page.getByRole("button", { name: "每周习惯", exact: true }).click();
+    await page.getByRole("button", { name: "编辑", exact: true }).click();
+    await expect(page.getByLabel("每周学习时间", { exact: true })).toHaveValue(
+      "21:15",
+    );
+    await page.getByRole("button", { name: "关闭对话框" }).click();
+    await page.getByRole("button", { name: "日期计划", exact: true }).click();
+    await page.getByRole("button", { name: "编辑", exact: true }).click();
+    await expect(page.getByLabel("学习日期与时间")).toHaveValue(dateValue);
   } finally {
     await cleanup(app, dir);
   }

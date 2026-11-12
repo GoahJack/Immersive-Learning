@@ -1,3 +1,5 @@
+// The schedule discriminant also defines the task category: free study, dated plan, weekly habit.
+// Keep one source of truth so existing schemaVersion 1 tasks need no migration.
 export type Schedule =
   | { type: "none" }
   | { type: "once"; at: string }

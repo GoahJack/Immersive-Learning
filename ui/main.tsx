@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import type {
   Command,
   MaterialType,
+  Schedule,
   Snapshot,
   StudyAPI,
   Task,
@@ -16,8 +17,37 @@ declare global {
     study: StudyAPI;
   }
 }
-type Page = "today" | "plans" | "records" | "settings";
+type Page = "today" | "habits" | "plans" | "free" | "records" | "settings";
+type TaskType = Schedule["type"];
+const taskKinds = {
+  weekly: {
+    page: "habits",
+    name: "每周习惯",
+    create: "新建习惯",
+    description: "每周固定练习，按选定星期和时间重复提醒。",
+    empty: "还没有每周习惯",
+    icon: "leaf",
+  },
+  once: {
+    page: "plans",
+    name: "日期计划",
+    create: "新建日期计划",
+    description: "为某一天安排学习，只在指定日期和时间提醒一次。",
+    empty: "还没有日期计划",
+    icon: "plan",
+  },
+  none: {
+    page: "free",
+    name: "自由学习",
+    create: "新建自由学习",
+    description: "不设提醒，想学时随时开始。",
+    empty: "还没有自由学习内容",
+    icon: "book",
+  },
+} as const;
+const taskTypes: TaskType[] = ["weekly", "once", "none"];
 type Modal =
+  | { kind: "choose-task"; preset?: Partial<TaskInput> }
   | { kind: "task"; task?: Task; preset?: Partial<TaskInput> }
   | { kind: "start"; task: Task; reminderId?: string }
   | { kind: "end" }
@@ -131,6 +161,7 @@ function scheduleText(task: Task) {
   if (task.schedule.type === "none") return "随时开始";
   if (task.schedule.type === "once")
     return new Date(task.schedule.at).toLocaleString("zh-CN", {
+      year: "numeric",
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -227,10 +258,11 @@ function TaskForm({
       ? `${dayKey(d)}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
       : "";
   };
+  const kind = taskKinds[v.schedule.type];
   return (
     <ModalFrame
-      title={task ? "编辑学习任务" : "安排一件想学的事"}
-      subtitle="目标具体一点，开始就容易一点。"
+      title={task ? `编辑${kind.name}` : kind.create}
+      subtitle={kind.description}
       onClose={onClose}
     >
       <form
@@ -330,37 +362,11 @@ function TaskForm({
             />
           </label>
         )}
-        <label>
-          学习时间
-          <select
-            aria-label="学习时间"
-            value={v.schedule.type}
-            onChange={(e) =>
-              update({
-                schedule:
-                  e.target.value === "weekly"
-                    ? {
-                        type: "weekly",
-                        days: [new Date().getDay()],
-                        time: "20:00",
-                      }
-                    : e.target.value === "once"
-                      ? {
-                          type: "once",
-                          at: new Date(Date.now() + 3600000).toISOString(),
-                        }
-                      : { type: "none" },
-              })
-            }
-          >
-            <option value="none">随时学习（不设提醒）</option>
-            <option value="once">指定日期（年 / 月 / 日）</option>
-            <option value="weekly">每周任务（选择周几）</option>
-          </select>
-        </label>
-        <p className="schedule-hint">
-          到点会用灵动岛提醒，关闭主窗口也能收到。按电脑本地时间执行。
-        </p>
+        {v.schedule.type !== "none" && (
+          <p className="schedule-hint">
+            到点会用灵动岛提醒，关闭主窗口也能收到。按电脑本地时间执行。
+          </p>
+        )}
         {v.schedule.type === "once" && (
           <label>
             学习日期与时间
@@ -505,6 +511,15 @@ function App() {
     setNextStep("");
     setModal({ kind: "end" });
   };
+  const createTask = (type: TaskType, preset?: Partial<TaskInput>) => {
+    const schedule: Schedule =
+      type === "weekly"
+        ? { type, days: [new Date().getDay()], time: "20:00" }
+        : type === "once"
+          ? { type, at: new Date(Date.now() + 3600000).toISOString() }
+          : { type };
+    setModal({ kind: "task", preset: { ...preset, schedule } });
+  };
   if (!snapshot)
     return (
       <div className="loading">
@@ -520,6 +535,8 @@ function App() {
   const today = dayKey(now);
   const active = s.active;
   const tasks = s.tasks.filter((t) => !t.archived);
+  const pageType = taskTypes.find((type) => taskKinds[type].page === page);
+  const pageTasks = tasks.filter((t) => t.schedule.type === pageType);
   const available = tasks.filter((t) => t.enabled);
   const pending = s.reminders.filter(
     (r) =>
@@ -561,7 +578,9 @@ function App() {
   const maximum = Math.max(1800000, ...days.map((d) => d.ms));
   const pageName: Record<Page, string> = {
     today: "今天",
-    plans: "学习计划",
+    habits: "每周习惯",
+    plans: "日期计划",
+    free: "自由学习",
     records: "学习记录",
     settings: "设置",
   };
@@ -576,6 +595,9 @@ function App() {
           <h3>{task.name}</h3>
           <p>{task.goal || task.material || "从一个小目标开始"}</p>
           <div className="task-meta">
+            <span className={`task-kind kind-${task.schedule.type}`}>
+              {taskKinds[task.schedule.type].name}
+            </span>
             <span>{task.category}</span>
             <span>
               <Icon name="clock" size={13} />
@@ -591,7 +613,7 @@ function App() {
           </div>
         </div>
         <div className="row-actions">
-          {page === "plans" && (
+          {pageType && (
             <>
               <button
                 className="text-btn"
@@ -633,7 +655,9 @@ function App() {
           {(
             [
               ["today", "sun"],
+              ["habits", "leaf"],
               ["plans", "plan"],
+              ["free", "book"],
               ["records", "chart"],
               ["settings", "settings"],
             ] as [Page, IconName][]
@@ -647,8 +671,13 @@ function App() {
             >
               <Icon name={icon} />
               {pageName[id]}
-              {id === "plans" && tasks.length > 0 && (
-                <span>{tasks.length}</span>
+              {taskTypes.some((type) => taskKinds[type].page === id) && (
+                <span>
+                  {
+                    tasks.filter((t) => taskKinds[t.schedule.type].page === id)
+                      .length
+                  }
+                </span>
               )}
             </button>
           ))}
@@ -693,10 +722,14 @@ function App() {
             {page !== "settings" && (
               <button
                 className="primary"
-                onClick={() => setModal({ kind: "task" })}
+                onClick={() =>
+                  pageType
+                    ? createTask(pageType)
+                    : setModal({ kind: "choose-task" })
+                }
               >
                 <Icon name="plus" size={17} />
-                新建任务
+                {pageType ? taskKinds[pageType].create : "新建任务"}
               </button>
             )}
           </header>
@@ -891,7 +924,7 @@ function App() {
                       </p>
                       <button
                         className="primary welcome-action"
-                        onClick={() => setModal({ kind: "task" })}
+                        onClick={() => setModal({ kind: "choose-task" })}
                       >
                         <Icon name="plus" size={17} />
                         安排第一项学习
@@ -941,15 +974,36 @@ function App() {
                   <h2>
                     学习安排 <span className="count">{available.length}</span>
                   </h2>
-                  <button className="text-btn" onClick={() => setPage("plans")}>
-                    管理计划 <Icon name="arrow" size={15} />
-                  </button>
                 </div>
                 {available.length ? (
                   <div className="task-list">
-                    {ordered.map((t) => (
-                      <TaskRow key={t.id} task={t} />
-                    ))}
+                    {taskTypes
+                      .filter((type) =>
+                        ordered.some((t) => t.schedule.type === type),
+                      )
+                      .map((type) => (
+                        <section
+                          key={type}
+                          aria-label={taskKinds[type].name}
+                          className="task-group"
+                        >
+                          <div className="section-heading group-heading">
+                            <h3>{taskKinds[type].name}</h3>
+                            <button
+                              className="text-btn"
+                              onClick={() => setPage(taskKinds[type].page)}
+                            >
+                              管理{taskKinds[type].name}{" "}
+                              <Icon name="arrow" size={15} />
+                            </button>
+                          </div>
+                          {ordered
+                            .filter((t) => t.schedule.type === type)
+                            .map((t) => (
+                              <TaskRow key={t.id} task={t} />
+                            ))}
+                        </section>
+                      ))}
                   </div>
                 ) : (
                   <div className="scenario-list">
@@ -983,7 +1037,7 @@ function App() {
                         key={p.name}
                         onClick={() =>
                           setModal({
-                            kind: "task",
+                            kind: "choose-task",
                             preset: {
                               name: p.name,
                               category: p.category,
@@ -1012,15 +1066,17 @@ function App() {
               </p>
             </>
           )}
-          {page === "plans" && (
+          {pageType && (
             <>
               <div className="section-heading plan-heading">
-                <p>把想学的内容，变成可以开始的小安排。</p>
-                <span>{tasks.length} 项任务</span>
+                <p>{taskKinds[pageType].description}</p>
+                <span>
+                  {pageTasks.length} 项{taskKinds[pageType].name}
+                </span>
               </div>
-              {tasks.length ? (
+              {pageTasks.length ? (
                 <div className="task-list">
-                  {[...tasks]
+                  {[...pageTasks]
                     .sort(
                       (a, b) =>
                         Number(b.enabled) - Number(a.enabled) ||
@@ -1032,14 +1088,14 @@ function App() {
                 </div>
               ) : (
                 <div className="empty">
-                  <Icon name="plan" size={40} />
-                  <h2>还没有学习计划</h2>
-                  <p>为课本、视频或听力安排一个具体目标。</p>
+                  <Icon name={taskKinds[pageType].icon} size={40} />
+                  <h2>{taskKinds[pageType].empty}</h2>
+                  <p>{taskKinds[pageType].description}</p>
                   <button
                     className="primary"
-                    onClick={() => setModal({ kind: "task" })}
+                    onClick={() => createTask(pageType)}
                   >
-                    新建任务
+                    添加第一项{taskKinds[pageType].name}
                   </button>
                 </div>
               )}
@@ -1244,7 +1300,7 @@ function App() {
                 <div className="setting-row">
                   <div>
                     <h3>
-                      沉浸学习 <span className="version">0.1.1</span>
+                      沉浸学习 <span className="version">0.1.2</span>
                     </h3>
                     <p>为纸质课本、在线课程和自己的节奏而设计。</p>
                   </div>
@@ -1260,6 +1316,26 @@ function App() {
           )}
         </div>
       </main>
+      {modal?.kind === "choose-task" && (
+        <ModalFrame
+          title="安排哪一类学习？"
+          subtitle="习惯按周重复，计划约定某一天。"
+          onClose={() => setModal(null)}
+        >
+          <div className="task-type-choices">
+            {taskTypes.map((type) => (
+              <button key={type} onClick={() => createTask(type, modal.preset)}>
+                <Icon name={taskKinds[type].icon} size={24} />
+                <span>
+                  <strong>{taskKinds[type].create}</strong>
+                  <small>{taskKinds[type].description}</small>
+                </span>
+                <Icon name="arrow" size={18} />
+              </button>
+            ))}
+          </div>
+        </ModalFrame>
+      )}
       {modal?.kind === "task" && (
         <TaskForm
           task={modal.task}

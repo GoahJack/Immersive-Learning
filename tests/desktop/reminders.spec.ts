@@ -151,7 +151,7 @@ test("one-minute completion shows island with main hidden; identical notificatio
   }
 });
 
-test("plan editor exposes weekly weekdays and a specific calendar date, persists both", async () => {
+test("weekly habits and dated plans have separate creation, editing and lists", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "study-desktop-"));
   const app = await electron.launch({
     executablePath: process.env.STUDY_EXECUTABLE,
@@ -175,9 +175,11 @@ test("plan editor exposes weekly weekdays and a specific calendar date, persists
       .find(
         (w) => w.url().includes("index.html") && !w.url().includes("island=1"),
       )!;
-    await page.getByRole("button", { name: "新建任务", exact: true }).click();
+    await page.getByRole("button", { name: "每周习惯", exact: true }).click();
+    await page.getByRole("button", { name: "新建习惯", exact: true }).click();
     await page.getByLabel("任务名称").fill("每周高数");
-    await page.getByLabel("学习时间", { exact: true }).selectOption("weekly");
+    await expect(page.getByLabel("学习日期与时间")).toHaveCount(0);
+    await expect(page.getByLabel("学习时间", { exact: true })).toHaveCount(0);
     const weekdays = page.getByRole("group", { name: "重复星期" });
     for (const b of await weekdays.getByRole("button").all())
       if ((await b.getAttribute("aria-pressed")) === "true") await b.click();
@@ -188,21 +190,66 @@ test("plan editor exposes weekly weekdays and a specific calendar date, persists
     expect(
       (await page.evaluate(() => window.study.snapshot())).tasks[0].schedule,
     ).toEqual({ type: "weekly", days: [1, 3], time: "20:30" });
-    await page.getByRole("button", { name: "学习计划", exact: true }).click();
     await page.getByRole("button", { name: "编辑", exact: true }).click();
-    await page.getByLabel("学习时间", { exact: true }).selectOption("once");
+    await expect(page.getByRole("group", { name: "重复星期" })).toBeVisible();
+    await expect(page.getByLabel("每周学习时间", { exact: true })).toHaveValue(
+      "20:30",
+    );
+    await page.getByRole("button", { name: "关闭对话框" }).click();
+    await page.screenshot({
+      path: "test-results/habits.png",
+      animations: "disabled",
+    });
+    await page.getByRole("button", { name: "日期计划", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "每周高数" })).toHaveCount(
+      0,
+    );
+    await page
+      .getByRole("button", { name: "新建日期计划", exact: true })
+      .click();
+    await page.getByLabel("任务名称").fill("周六算法复习");
+    await expect(page.getByRole("group", { name: "重复星期" })).toHaveCount(0);
     const d = new Date();
     d.setDate(d.getDate() + 2);
     const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T19:45`;
     await page.getByLabel("学习日期与时间").fill(value);
     await page.getByRole("button", { name: "保存任务", exact: true }).click();
     const schedule = (await page.evaluate(() => window.study.snapshot()))
-      .tasks[0].schedule;
+      .tasks[1].schedule;
     expect(schedule.type).toBe("once");
     if (schedule.type === "once")
       expect(schedule.at).toBe(new Date(value).toISOString());
     await page.getByRole("button", { name: "编辑", exact: true }).click();
     await expect(page.getByLabel("学习日期与时间")).toHaveValue(value);
+    await expect(page.getByLabel("每周学习时间", { exact: true })).toHaveCount(
+      0,
+    );
+    await page.getByRole("button", { name: "关闭对话框" }).click();
+    await page.screenshot({
+      path: "test-results/dated-plans.png",
+      animations: "disabled",
+    });
+    await page.getByRole("button", { name: "每周习惯", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "每周高数" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "周六算法复习" }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "今天", exact: true }).click();
+    await expect(
+      page
+        .getByRole("region", { name: "每周习惯" })
+        .getByRole("heading", { name: "每周高数" }),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("region", { name: "日期计划" })
+        .getByRole("heading", { name: "周六算法复习" }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: "test-results/task-groups.png",
+      animations: "disabled",
+      fullPage: true,
+    });
   } finally {
     await app.close();
     const target = path.resolve(dir);

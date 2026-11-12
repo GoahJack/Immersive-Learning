@@ -194,6 +194,52 @@ test("weekly recovery retains only the latest missed occurrence and computes nex
   const next = nextOccurrence(t, new Date(2026, 10, 19, 20, 1));
   assert.equal(localDay(next!), "2026-11-26");
 });
+test("finished weekly habits recur next week while dated plans never create a second occurrence", () => {
+  const c = clock();
+  const habit = add(
+    c.engine,
+    input({
+      name: "每周听力",
+      schedule: { type: "weekly", days: [4], time: "20:01" },
+    }),
+  );
+  const plan = add(
+    c.engine,
+    input({
+      name: "当天复习",
+      schedule: {
+        type: "once",
+        at: new Date(2026, 10, 12, 20, 1).toISOString(),
+      },
+    }),
+  );
+  c.advance(60000);
+  for (const task of [habit, plan]) {
+    const reminder = c.engine.data.reminders.find((r) => r.taskId === task.id)!;
+    c.engine.command({
+      type: "session.start",
+      taskId: task.id,
+      reminderId: reminder.id,
+    });
+    c.engine.command({
+      type: "session.end",
+      id: c.engine.active!.id,
+      progress: "已完成",
+      nextStep: "",
+    });
+  }
+  c.advance(7 * 86400000);
+  assert.equal(
+    c.engine.data.reminders.filter((r) => r.taskId === habit.id).length,
+    2,
+  );
+  assert.equal(
+    c.engine.data.reminders.filter((r) => r.taskId === plan.id).length,
+    1,
+  );
+  assert.equal(nextOccurrence(plan, new Date(2026, 10, 19, 20, 1)), null);
+  assert.equal(habit.enabled, true);
+});
 test("reminders during active learning are deferred; archive cancels pending reminders", () => {
   const c = clock();
   const t = add(c.engine);
