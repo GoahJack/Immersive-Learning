@@ -384,3 +384,41 @@ test("settings preview auto-hides and invalid commands are rejected", async () =
     await cleanup(app, dir);
   }
 });
+
+test("update settings persist while test builds cannot download or install", async () => {
+  let { app, page, dir } = await launch();
+  try {
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    const section = page.getByRole("region", { name: "软件更新" });
+    await expect(
+      section.getByRole("button", { name: "检查更新", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      section.getByText("自动化测试中不访问更新服务。", { exact: true }),
+    ).toBeVisible();
+    const toggle = section.getByRole("switch", { name: "自动检查并下载" });
+    await expect(toggle).toBeChecked();
+    await toggle.click();
+    await expect(toggle).not.toBeChecked();
+    const rejected = await page.evaluate(() =>
+      window.study.command({ type: "update.install" }),
+    );
+    expect(rejected.ok).toBe(false);
+    expect(
+      (await page.evaluate(() => window.study.snapshot())).update?.status,
+    ).toBe("disabled");
+    await page.screenshot({
+      path: "test-results/updates.png",
+      animations: "disabled",
+      fullPage: true,
+    });
+    await app.close();
+    ({ app, page } = await launch(undefined, dir));
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await expect(
+      page.getByRole("switch", { name: "自动检查并下载" }),
+    ).not.toBeChecked();
+  } finally {
+    await cleanup(app, dir);
+  }
+});

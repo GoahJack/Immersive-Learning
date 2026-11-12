@@ -9,11 +9,15 @@ import {
   shell,
   dialog,
   powerMonitor,
+  autoUpdater as nativeUpdater,
 } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
 import path from "node:path";
+import fs from "node:fs";
 import { Engine } from "../core/engine";
 import { Store } from "../core/store";
+import { autoUpdater } from "electron-updater";
+import { UpdateController } from "./update-controller";
 import type { Command, Island, Result } from "../shared/types";
 
 const testMode = process.env.STUDY_TEST_MODE === "1";
@@ -26,6 +30,7 @@ let main: BrowserWindow,
   tray: Tray,
   engine: Engine,
   store: Store;
+let updates: UpdateController;
 let quitting = false,
   lastSave = 0,
   savedRevision = -1,
@@ -78,6 +83,7 @@ function positionIsland() {
 }
 function publish() {
   const snapshot = engine.snapshot();
+  snapshot.update = updates?.state;
   for (const w of [main, island])
     if (w && !w.isDestroyed() && !w.webContents.isLoadingMainFrame())
       w.webContents.send("study:state", snapshot);
@@ -108,13 +114,16 @@ function publish() {
 }
 function updateTray() {
   const active = engine.active;
-  const signature = `${active?.id}|${active?.state}|${active?.taskName}|${active ? active.elapsedMs >= active.targetMs : ""}`;
+  const signature = `${active?.id}|${active?.state}|${active?.taskName}|${active ? active.elapsedMs >= active.targetMs : ""}|${updates?.state.status}`;
   if (signature === lastTray) return;
   lastTray = signature;
   tray.setToolTip(
-    active
+    (active
       ? `沉浸学习：${active.taskName}（${active.state === "running" ? "专注中" : "已暂停"}）`
-      : "沉浸学习",
+      : "沉浸学习") +
+      (updates?.state.status === "ready"
+        ? ` · ${updates.state.version} 可安装`
+        : ""),
   );
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -150,6 +159,17 @@ function updateTray() {
           ]
         : []),
       { type: "separator" },
+      ...(updates?.state.status === "ready"
+        ? [
+            {
+              label: "更新已准备好，打开设置",
+              click: () => {
+                showMain();
+                main.webContents.send("study:update-settings");
+              },
+            },
+          ]
+        : []),
       {
         label: "彻底退出",
         click: () => {
@@ -203,6 +223,38 @@ async function execute(command: Command): Promise<Result> {
       typeof command.type !== "string"
     )
       throw Error("操作格式不正确。");
+    if (command.type === "update.check") {
+      // The main process owns the operation; the renderer never supplies a URL or file path.
+      void updates.check().catch(() => {});
+      if (updates.state.status === "disabled")
+        throw Error(updates.state.message!);
+      return { ok: true };
+    }
+    if (command.type === "update.install") {
+      await updates.install(async () => {
+        const answer = await dialog.showMessageBox(main, {
+          type: "question",
+          title: "重启并更新",
+          message: `安装 ${updates.state.version}，并重新打开沉浸学习。`,
+          detail: engine.active
+            ? "当前学习会保存为暂停，更新后可以继续。"
+            : "学习计划、进度与记录会保留。",
+          buttons: ["稍后", "保存并重启更新"],
+          defaultId: 0,
+          cancelId: 0,
+        });
+        if (answer.response !== 1) return false;
+        if (engine.active)
+          engine.command({ type: "session.pause", id: engine.active.id });
+        if (!save(true)) {
+          publish();
+          throw Error(engine.saveError!);
+        }
+        publish();
+        return true;
+      });
+      return { ok: true };
+    }
     if (command.type === "window.show") {
       showMain();
       return { ok: true };
@@ -370,6 +422,46 @@ if (locked) {
       .resize({ width: 20, height: 20 });
     tray = new Tray(icon);
     tray.on("double-click", showMain);
+    const canUpdate =
+      app.isPackaged &&
+      process.platform === "win32" &&
+      !testMode &&
+      fs.existsSync(
+        path.join(path.dirname(process.execPath), "Uninstall 沉浸学习.exe"),
+      );
+    if (canUpdate) {
+      autoUpdater.autoDownload = false;
+      autoUpdater.autoInstallOnAppQuit = false;
+      autoUpdater.autoRunAppAfterInstall = true;
+      autoUpdater.allowPrerelease = false;
+      autoUpdater.allowDowngrade = false;
+      autoUpdater.disableWebInstaller = true;
+      // Avoid inheriting developer credentials; the public update provider needs no token.
+      autoUpdater.requestHeaders = null;
+    }
+    updates = new UpdateController(
+      canUpdate ? autoUpdater : null,
+      app.getVersion(),
+      publish,
+      () => {
+        engine.notice = `新版本 ${updates.state.version} 已下载。可在设置中选择重启安装，当前学习不会被自动中断。`;
+        publish();
+      },
+      testMode
+        ? "自动化测试中不访问更新服务。"
+        : !app.isPackaged
+          ? "开发模式不支持自动更新，请使用安装版。"
+          : "此运行方式不支持自动更新，请使用 Windows 安装版。",
+    );
+    nativeUpdater.on("before-quit-for-update", () => {
+      quitting = true;
+    });
+    const checkAutomatically = () => {
+      if (canUpdate && engine.data.settings.autoUpdate)
+        void updates.check().catch(() => {});
+    };
+    setTimeout(checkAutomatically, 30000).unref();
+    setInterval(checkAutomatically, 6 * 60 * 60 * 1000).unref();
     updateTray();
     main.once("ready-to-show", () => {
       if (!process.argv.includes("--hidden")) main.show();
@@ -394,7 +486,7 @@ if (locked) {
     });
     ipcMain.handle("study:snapshot", (event) => {
       trusted(event);
-      return engine.snapshot();
+      return { ...engine.snapshot(), update: updates.state };
     });
     ipcMain.handle("study:command", (event, command: Command) => {
       trusted(event);

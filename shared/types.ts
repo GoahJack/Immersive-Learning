@@ -55,6 +55,23 @@ export interface Settings {
   stages: boolean;
   autostart: boolean;
   trayExplained: boolean;
+  autoUpdate: boolean;
+}
+export interface UpdateState {
+  currentVersion: string;
+  status:
+    | "disabled"
+    | "idle"
+    | "checking"
+    | "available"
+    | "downloading"
+    | "ready"
+    | "installing"
+    | "error";
+  version?: string;
+  percent?: number;
+  checkedAt?: string;
+  message?: string;
 }
 export interface Data {
   schemaVersion: 1;
@@ -72,6 +89,7 @@ export interface Island {
   taskId?: string;
 }
 export interface Snapshot extends Data {
+  update?: UpdateState;
   now: string;
   active?: Session;
   island: Island | null;
@@ -79,6 +97,7 @@ export interface Snapshot extends Data {
   notice: string | null;
 }
 export type Command =
+  | { type: "update.check" | "update.install" }
   | { type: "task.save"; task: TaskInput; id?: string }
   | { type: "task.archive"; id: string }
   | {
@@ -110,4 +129,5 @@ export interface StudyAPI {
   subscribe(listener: (snapshot: Snapshot) => void): () => void;
   pickFile(): Promise<string | null>;
   onFinish(listener: () => void): () => void;
+  onUpdateSettings(listener: () => void): () => void;
 }

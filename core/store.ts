@@ -24,6 +24,9 @@ export function parseData(raw: string): Data {
     fail();
   for (const key of ["sound", "stages", "autostart", "trayExplained"])
     if (typeof d.settings[key] !== "boolean") fail();
+  // schemaVersion 1 predates updates; add the default without changing learning records.
+  if (d.settings.autoUpdate === undefined) d.settings.autoUpdate = true;
+  if (typeof d.settings.autoUpdate !== "boolean") fail();
   const string = (v: unknown) => typeof v === "string";
   const date = (v: unknown) =>
     string(v) && Number.isFinite(Date.parse(v as string));

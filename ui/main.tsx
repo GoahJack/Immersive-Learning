@@ -478,9 +478,11 @@ function App() {
       setNextStep("");
       setModal({ kind: "end" });
     });
+    const offUpdate = window.study.onUpdateSettings(() => setPage("settings"));
     return () => {
       off();
       offFinish();
+      offUpdate();
     };
   }, []);
   const run = async (command: Command, throwError = false) => {
@@ -755,6 +757,9 @@ function App() {
           {s.notice && (
             <div className="banner">
               <span>{s.notice}</span>
+              {s.update?.status === "ready" && page !== "settings" && (
+                <button onClick={() => setPage("settings")}>查看更新</button>
+              )}
               <button
                 aria-label="关闭提示"
                 onClick={() => void run({ type: "notice.dismiss" })}
@@ -1198,6 +1203,90 @@ function App() {
           )}
           {page === "settings" && (
             <>
+              <section className="settings-section" aria-label="软件更新">
+                <h2>软件更新</h2>
+                <div className="setting-row">
+                  <div>
+                    <h3>自动检查并下载</h3>
+                    <p>
+                      启动后及每 6
+                      小时检查正式版本。下载完成后由你选择重启安装。
+                    </p>
+                  </div>
+                  <button
+                    className="switch"
+                    role="switch"
+                    aria-label="自动检查并下载"
+                    aria-checked={s.settings.autoUpdate}
+                    disabled={busy}
+                    onClick={() =>
+                      void run({
+                        type: "settings.update",
+                        settings: { autoUpdate: !s.settings.autoUpdate },
+                      })
+                    }
+                  >
+                    <span />
+                  </button>
+                </div>
+                <div className="setting-row">
+                  <div className="update-info" role="status" aria-live="polite">
+                    <h3>当前版本 {s.update?.currentVersion || "0.1.3"}</h3>
+                    <p>
+                      {s.update?.status === "checking"
+                        ? "正在检查新版本…"
+                        : s.update?.status === "downloading"
+                          ? `正在下载 ${s.update.version}：${Math.floor(s.update.percent || 0)}%`
+                          : s.update?.status === "ready"
+                            ? `新版本 ${s.update.version} 已准备好。`
+                            : s.update?.message || "可随时手动检查更新。"}
+                    </p>
+                    {s.update?.status === "downloading" && (
+                      <progress
+                        aria-label="更新下载进度"
+                        max={100}
+                        value={s.update.percent || 0}
+                      />
+                    )}
+                    {s.update?.checkedAt && (
+                      <p>
+                        上次检查：
+                        {new Date(s.update.checkedAt).toLocaleString("zh-CN")}
+                      </p>
+                    )}
+                  </div>
+                  {s.update?.status === "ready" ? (
+                    <button
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => void run({ type: "update.install" })}
+                    >
+                      重启并更新
+                    </button>
+                  ) : (
+                    <button
+                      disabled={
+                        busy ||
+                        !s.update ||
+                        [
+                          "disabled",
+                          "checking",
+                          "available",
+                          "downloading",
+                          "installing",
+                        ].includes(s.update.status)
+                      }
+                      onClick={() => void run({ type: "update.check" })}
+                    >
+                      {s.update?.status === "error" ? "重试更新" : "检查更新"}
+                    </button>
+                  )}
+                </div>
+                <p className="help-text">
+                  更新来自 GitHub
+                  正式发布。安装前保存学习状态，重启后保持暂停；不会自动中断学习。
+                </p>
+              </section>
               <section className="settings-section">
                 <h2>提醒与陪伴</h2>
                 {(
@@ -1300,7 +1389,10 @@ function App() {
                 <div className="setting-row">
                   <div>
                     <h3>
-                      沉浸学习 <span className="version">0.1.2</span>
+                      沉浸学习{" "}
+                      <span className="version">
+                        {s.update?.currentVersion || "0.1.3"}
+                      </span>
                     </h3>
                     <p>为纸质课本、在线课程和自己的节奏而设计。</p>
                   </div>

@@ -22,6 +22,7 @@ export const freshData = (): Data => ({
     stages: false,
     autostart: false,
     trayExplained: false,
+    autoUpdate: true,
   },
 });
 export function localDay(date: Date): string {
@@ -367,7 +368,13 @@ export class Engine {
       case "settings.update": {
         for (const [key, value] of Object.entries(command.settings)) {
           if (
-            !["sound", "stages", "autostart", "trayExplained"].includes(key) ||
+            ![
+              "sound",
+              "stages",
+              "autostart",
+              "trayExplained",
+              "autoUpdate",
+            ].includes(key) ||
             typeof value !== "boolean"
           )
             throw Error("设置格式不正确。");
