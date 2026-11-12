@@ -1,0 +1,11 @@
+node_modules/
+build/
+dist/
+release/
+test-results/
+playwright-report/
+*.log
+.test-data/
+study-data.json*
+.env
+.env.*
