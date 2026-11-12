@@ -1,7 +1,7 @@
 {
   "name": "study-companion",
   "productName": "沉浸学习",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "支持纸质课本与在线课程的 Windows 学习陪伴台",
   "author": "Study Companion",

@@ -550,7 +550,28 @@ function App() {
     const pb = pending.some((r) => r.taskId === b.id) ? 0 : 1;
     return pa - pb || nextAt(a, now) - nextAt(b, now);
   });
-  const nextTask = ordered.find((t) => t.id !== active?.taskId);
+  const datedPlans = available
+    .filter(
+      (t) =>
+        t.schedule.type === "once" &&
+        t.id !== active?.taskId &&
+        (Date.parse(t.schedule.at) > now.getTime() ||
+          pending.some((r) => r.taskId === t.id)),
+    )
+    .sort((a, b) => {
+      const ra = pending.find((r) => r.taskId === a.id);
+      const rb = pending.find((r) => r.taskId === b.id);
+      const at =
+        a.schedule.type === "once" ? Date.parse(a.schedule.at) : Infinity;
+      const bt =
+        b.schedule.type === "once" ? Date.parse(b.schedule.at) : Infinity;
+      return (
+        Number(!ra) - Number(!rb) ||
+        (ra ? Date.parse(ra.dueAt) : at) - (rb ? Date.parse(rb.dueAt) : bt)
+      );
+    });
+  const otherTasks = ordered.filter((t) => t.schedule.type !== "once");
+  const nextTask = otherTasks.find((t) => t.id !== active?.taskId);
   const todayMs = s.sessions.reduce((a, x) => a + (x.dailyMs[today] || 0), 0);
   const monday = new Date(now);
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
@@ -642,6 +663,124 @@ function App() {
       </article>
     );
   }
+  const planAgenda = (
+    <section
+      className={`plan-agenda ${active ? "after-focus" : ""}`}
+      aria-label="日期计划"
+    >
+      <div className="agenda-heading">
+        <div>
+          <h2>
+            日期计划{" "}
+            <span>
+              {datedPlans.length
+                ? `${datedPlans.length} 项学习安排`
+                : "为某一天留出学习时间"}
+            </span>
+          </h2>
+          <p>
+            {active
+              ? "当前学习结束后，可以接着下一项安排。"
+              : "先看看接下来要学什么。"}
+          </p>
+        </div>
+        <div className="agenda-actions">
+          <button className="text-btn" onClick={() => setPage("plans")}>
+            全部日期计划 <Icon name="arrow" size={15} />
+          </button>
+          <button onClick={() => createTask("once")}>
+            <Icon name="plus" size={15} />
+            新建日期计划
+          </button>
+        </div>
+      </div>
+      {datedPlans.length ? (
+        <div className="agenda-list">
+          {datedPlans.slice(0, 3).map((task) => {
+            const at = new Date(
+              task.schedule.type === "once" ? task.schedule.at : "",
+            );
+            const reminder = pending.find((r) => r.taskId === task.id);
+            const due = reminder && Date.parse(reminder.dueAt) <= now.getTime();
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const label =
+              dayKey(at) === today
+                ? "今天"
+                : dayKey(at) === dayKey(tomorrow)
+                  ? "明天"
+                  : at.toLocaleDateString("zh-CN", { weekday: "long" });
+            const time = at.toLocaleTimeString("zh-CN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            });
+            return (
+              <article
+                key={task.id}
+                className={`agenda-row ${due ? "is-due" : ""}`}
+              >
+                <div
+                  className="agenda-date"
+                  aria-label={at.toLocaleDateString("zh-CN")}
+                >
+                  <span>
+                    {at.getFullYear() !== now.getFullYear()
+                      ? `${at.getFullYear()}年`
+                      : ""}
+                    {at.getMonth() + 1}月
+                  </span>
+                  <strong>{String(at.getDate()).padStart(2, "0")}</strong>
+                </div>
+                <div className="agenda-details">
+                  <div className="agenda-time">
+                    <time dateTime={at.toISOString()}>
+                      {label} {time}
+                    </time>
+                    {reminder && (
+                      <span className={due ? "due-label" : "snooze-label"}>
+                        {due
+                          ? "待开始"
+                          : `稍后 ${new Date(reminder.dueAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })}`}
+                      </span>
+                    )}
+                  </div>
+                  <h3>{task.name}</h3>
+                  <p>
+                    {task.goal || task.material || task.category}
+                    <span>{task.minutes} 分钟</span>
+                  </p>
+                </div>
+                <button
+                  className="primary"
+                  disabled={busy || !!active}
+                  aria-label={`开始学习：${task.name}`}
+                  onClick={() => openStart(task, reminder?.id)}
+                >
+                  <Icon name="play" size={15} />
+                  开始学习
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="agenda-empty">
+          <Icon name="plan" size={25} />
+          <p>还没有待开始的日期计划。为下一次课本、课程或听力学习定个时间。</p>
+        </div>
+      )}
+      {datedPlans.length > 3 && (
+        <button
+          className="agenda-more text-btn"
+          onClick={() => setPage("plans")}
+        >
+          查看其余 {datedPlans.length - 3} 项日期计划{" "}
+          <Icon name="arrow" size={15} />
+        </button>
+      )}
+    </section>
+  );
   return (
     <div className="app">
       <aside className="sidebar">
@@ -770,301 +909,336 @@ function App() {
           )}
           {page === "today" && (
             <>
-              <div className="today-grid">
-                <section className={`focus-panel ${active ? "is-active" : ""}`}>
-                  {active ? (
-                    <>
-                      <div className="focus-top">
-                        <span className="pill">
-                          <span
-                            className={`status-dot ${active.state === "running" ? "on" : ""}`}
-                          />
-                          {active.state === "running"
-                            ? "专注进行中"
-                            : active.elapsedMs >= active.targetMs
-                              ? "本段已完成"
-                              : "已暂停，按自己的节奏来"}
-                        </span>
-                        <button
-                          className="text-btn"
-                          onClick={() => void run({ type: "window.hide" })}
+              {!active && planAgenda}
+              {(active || nextTask || !available.length) && (
+                <div className="today-grid">
+                  <section
+                    className={`focus-panel ${active ? "is-active" : ""}`}
+                  >
+                    {active ? (
+                      <>
+                        <div className="focus-top">
+                          <span className="pill">
+                            <span
+                              className={`status-dot ${active.state === "running" ? "on" : ""}`}
+                            />
+                            {active.state === "running"
+                              ? "专注进行中"
+                              : active.elapsedMs >= active.targetMs
+                                ? "本段已完成"
+                                : "已暂停，按自己的节奏来"}
+                          </span>
+                          <button
+                            className="text-btn"
+                            onClick={() => void run({ type: "window.hide" })}
+                          >
+                            收起窗口 <Icon name="arrow" size={15} />
+                          </button>
+                        </div>
+                        <h2>{active.taskName}</h2>
+                        <p className="focus-description">
+                          {s.tasks.find((t) => t.id === active.taskId)?.goal ||
+                            "此刻，只做这一件事。"}
+                        </p>
+                        <div
+                          className="timer"
+                          aria-label={`剩余时间 ${clock(active.targetMs - active.elapsedMs)}`}
                         >
-                          收起窗口 <Icon name="arrow" size={15} />
-                        </button>
-                      </div>
-                      <h2>{active.taskName}</h2>
-                      <p className="focus-description">
-                        {s.tasks.find((t) => t.id === active.taskId)?.goal ||
-                          "此刻，只做这一件事。"}
-                      </p>
-                      <div
-                        className="timer"
-                        aria-label={`剩余时间 ${clock(active.targetMs - active.elapsedMs)}`}
-                      >
-                        {clock(active.targetMs - active.elapsedMs)}
-                        <span>剩余时间</span>
-                      </div>
-                      <div className="progress-track">
-                        <span
-                          style={{
-                            width: `${Math.min(100, (active.elapsedMs / active.targetMs) * 100)}%`,
-                          }}
-                        />
-                      </div>
-                      <div className="focus-footer">
-                        <span>
-                          已专注 {duration(active.elapsedMs)}
-                          <br />
-                          <small>暂停 {duration(active.pausedMs)}</small>
-                        </span>
-                        <div>
-                          {active.elapsedMs >= active.targetMs ? (
-                            <button
-                              className="primary"
-                              disabled={busy}
-                              onClick={() =>
-                                void run({
-                                  type: "session.extend",
-                                  id: active.id,
-                                })
-                              }
-                            >
-                              继续 10 分钟
-                            </button>
-                          ) : (
-                            <button
-                              className="primary"
-                              disabled={busy}
-                              onClick={() =>
-                                void run({
-                                  type:
-                                    active.state === "running"
-                                      ? "session.pause"
-                                      : "session.resume",
-                                  id: active.id,
-                                })
-                              }
-                            >
-                              <Icon
-                                name={
-                                  active.state === "running" ? "pause" : "play"
-                                }
-                                size={16}
-                              />
-                              {active.state === "running" ? "暂停" : "继续学习"}
-                            </button>
-                          )}
-                          <button onClick={openEnd}>结束并记录</button>
+                          {clock(active.targetMs - active.elapsedMs)}
+                          <span>剩余时间</span>
                         </div>
-                      </div>
-                    </>
-                  ) : nextTask ? (
-                    <>
-                      <div className="focus-top">
-                        <span className="pill">接下来，专注这一件事</span>
-                        <span className="quiet-label">
-                          {nextTask.minutes} 分钟
-                        </span>
-                      </div>
-                      <span className={`large-material ${taskTone(nextTask)}`}>
-                        <Icon name={taskIcon(nextTask)} size={30} />
-                      </span>
-                      <h2>{nextTask.name}</h2>
-                      <p className="focus-description">
-                        {nextTask.goal ||
-                          nextTask.material ||
-                          "不必等到状态完美，先开始一小步。"}
-                      </p>
-                      {(nextTask.progress || nextTask.nextStep) && (
-                        <div className="resume-note">
-                          <span>接着上次</span>
-                          <p>{nextTask.nextStep || nextTask.progress}</p>
-                        </div>
-                      )}
-                      <div className="focus-footer">
-                        <span>{scheduleText(nextTask)}</span>
-                        <div>
-                          <button
-                            className="primary"
-                            onClick={() =>
-                              openStart(
-                                nextTask,
-                                pending.find((r) => r.taskId === nextTask.id)
-                                  ?.id,
-                              )
-                            }
-                          >
-                            <Icon name="play" size={16} />
-                            开始学习
-                          </button>
-                          <button
-                            disabled={busy}
-                            onClick={() =>
-                              void run({
-                                type: "session.start",
-                                taskId: nextTask.id,
-                                minutes: 5,
-                                reminderId: pending.find(
-                                  (r) => r.taskId === nextTask.id,
-                                )?.id,
-                              })
-                            }
-                          >
-                            先学 5 分钟
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="focus-top">
-                        <span className="pill">给学习留一个位置</span>
-                        <Icon name="book" size={24} />
-                      </div>
-                      <h2 className="welcome-title">从一件想学的事开始。</h2>
-                      <p className="focus-description">
-                        一本课本、一节教程，或一段听力。
-                        <br />
-                        定下小目标，剩下的交给这段时间。
-                      </p>
-                      <button
-                        className="primary welcome-action"
-                        onClick={() => setModal({ kind: "choose-task" })}
-                      >
-                        <Icon name="plus" size={17} />
-                        安排第一项学习
-                      </button>
-                      <p className="welcome-note">
-                        纸质书也可以，学习不必都在屏幕里。
-                      </p>
-                    </>
-                  )}
-                </section>
-                <section className="week-panel">
-                  <div className="section-heading">
-                    <h2>这一周的投入</h2>
-                    <Icon name="chart" size={18} />
-                  </div>
-                  <div className="week-total">
-                    {Math.floor(weekMs / 60000)}
-                    <span>分钟</span>
-                  </div>
-                  <p>每一小段，都算数。</p>
-                  <div className="week-chart" aria-label="本周每日专注时长">
-                    {days.map((d) => (
-                      <div
-                        className={`day-column ${d.key === today ? "is-today" : ""}`}
-                        key={d.key}
-                        title={`${d.key}：${duration(d.ms)}`}
-                      >
-                        <div className="bar-area">
-                          <div
+                        <div className="progress-track">
+                          <span
                             style={{
-                              height: `${Math.max(d.ms > 0 ? 4 : 0, (d.ms / maximum) * 100)}%`,
+                              width: `${Math.min(100, (active.elapsedMs / active.targetMs) * 100)}%`,
                             }}
                           />
                         </div>
-                        <span>{d.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="today-total">
-                    <span>今天已专注</span>
-                    <strong>{duration(todayMs)}</strong>
-                  </div>
-                </section>
-              </div>
-              <section className="task-section">
-                <div className="section-heading">
-                  <h2>
-                    学习安排 <span className="count">{available.length}</span>
-                  </h2>
-                </div>
-                {available.length ? (
-                  <div className="task-list">
-                    {taskTypes
-                      .filter((type) =>
-                        ordered.some((t) => t.schedule.type === type),
-                      )
-                      .map((type) => (
-                        <section
-                          key={type}
-                          aria-label={taskKinds[type].name}
-                          className="task-group"
+                        <div className="focus-footer">
+                          <span>
+                            已专注 {duration(active.elapsedMs)}
+                            <br />
+                            <small>暂停 {duration(active.pausedMs)}</small>
+                          </span>
+                          <div>
+                            {active.elapsedMs >= active.targetMs ? (
+                              <button
+                                className="primary"
+                                disabled={busy}
+                                onClick={() =>
+                                  void run({
+                                    type: "session.extend",
+                                    id: active.id,
+                                  })
+                                }
+                              >
+                                继续 10 分钟
+                              </button>
+                            ) : (
+                              <button
+                                className="primary"
+                                disabled={busy}
+                                onClick={() =>
+                                  void run({
+                                    type:
+                                      active.state === "running"
+                                        ? "session.pause"
+                                        : "session.resume",
+                                    id: active.id,
+                                  })
+                                }
+                              >
+                                <Icon
+                                  name={
+                                    active.state === "running"
+                                      ? "pause"
+                                      : "play"
+                                  }
+                                  size={16}
+                                />
+                                {active.state === "running"
+                                  ? "暂停"
+                                  : "继续学习"}
+                              </button>
+                            )}
+                            <button onClick={openEnd}>结束并记录</button>
+                          </div>
+                        </div>
+                      </>
+                    ) : nextTask ? (
+                      <>
+                        <div className="focus-top">
+                          <span className="pill">接下来，专注这一件事</span>
+                          <span className="quiet-label">
+                            {nextTask.minutes} 分钟
+                          </span>
+                        </div>
+                        <span
+                          className={`large-material ${taskTone(nextTask)}`}
                         >
-                          <div className="section-heading group-heading">
-                            <h3>{taskKinds[type].name}</h3>
+                          <Icon name={taskIcon(nextTask)} size={30} />
+                        </span>
+                        <h2>{nextTask.name}</h2>
+                        <p className="focus-description">
+                          {nextTask.goal ||
+                            nextTask.material ||
+                            "不必等到状态完美，先开始一小步。"}
+                        </p>
+                        {(nextTask.progress || nextTask.nextStep) && (
+                          <div className="resume-note">
+                            <span>接着上次</span>
+                            <p>{nextTask.nextStep || nextTask.progress}</p>
+                          </div>
+                        )}
+                        <div className="focus-footer">
+                          <span>{scheduleText(nextTask)}</span>
+                          <div>
                             <button
-                              className="text-btn"
-                              onClick={() => setPage(taskKinds[type].page)}
+                              className="primary"
+                              onClick={() =>
+                                openStart(
+                                  nextTask,
+                                  pending.find((r) => r.taskId === nextTask.id)
+                                    ?.id,
+                                )
+                              }
                             >
-                              管理{taskKinds[type].name}{" "}
-                              <Icon name="arrow" size={15} />
+                              <Icon name="play" size={16} />
+                              开始学习
+                            </button>
+                            <button
+                              disabled={busy}
+                              onClick={() =>
+                                void run({
+                                  type: "session.start",
+                                  taskId: nextTask.id,
+                                  minutes: 5,
+                                  reminderId: pending.find(
+                                    (r) => r.taskId === nextTask.id,
+                                  )?.id,
+                                })
+                              }
+                            >
+                              先学 5 分钟
                             </button>
                           </div>
-                          {ordered
-                            .filter((t) => t.schedule.type === type)
-                            .map((t) => (
-                              <TaskRow key={t.id} task={t} />
-                            ))}
-                        </section>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="focus-top">
+                          <span className="pill">给学习留一个位置</span>
+                          <Icon name="book" size={24} />
+                        </div>
+                        <h2 className="welcome-title">从一件想学的事开始。</h2>
+                        <p className="focus-description">
+                          一本课本、一节教程，或一段听力。
+                          <br />
+                          定下小目标，剩下的交给这段时间。
+                        </p>
+                        <button
+                          className="primary welcome-action"
+                          onClick={() => setModal({ kind: "choose-task" })}
+                        >
+                          <Icon name="plus" size={17} />
+                          安排第一项学习
+                        </button>
+                        <p className="welcome-note">
+                          纸质书也可以，学习不必都在屏幕里。
+                        </p>
+                      </>
+                    )}
+                  </section>
+                  <section className="week-panel">
+                    <div className="section-heading">
+                      <h2>这一周的投入</h2>
+                      <Icon name="chart" size={18} />
+                    </div>
+                    <div className="week-total">
+                      {Math.floor(weekMs / 60000)}
+                      <span>分钟</span>
+                    </div>
+                    <p>每一小段，都算数。</p>
+                    <div className="week-chart" aria-label="本周每日专注时长">
+                      {days.map((d) => (
+                        <div
+                          className={`day-column ${d.key === today ? "is-today" : ""}`}
+                          key={d.key}
+                          title={`${d.key}：${duration(d.ms)}`}
+                        >
+                          <div className="bar-area">
+                            <div
+                              style={{
+                                height: `${Math.max(d.ms > 0 ? 4 : 0, (d.ms / maximum) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                          <span>{d.label}</span>
+                        </div>
                       ))}
+                    </div>
+                    <div className="today-total">
+                      <span>今天已专注</span>
+                      <strong>{duration(todayMs)}</strong>
+                    </div>
+                  </section>
+                </div>
+              )}
+              {active && planAgenda}
+              {!active && !nextTask && available.length > 0 && (
+                <section className="study-summary" aria-label="学习概况">
+                  <div>
+                    <span>今天专注</span>
+                    <strong>{duration(todayMs)}</strong>
                   </div>
-                ) : (
-                  <div className="scenario-list">
-                    <p>从你熟悉的学习场景开始</p>
-                    {(
-                      [
-                        {
-                          icon: "book",
-                          name: "高数课本",
-                          category: "数学",
-                          materialType: "paper",
-                          goal: "阅读课本，完成两道例题",
-                        },
-                        {
-                          icon: "video",
-                          name: "算法教程",
-                          category: "算法",
-                          materialType: "web",
-                          goal: "理解一个算法，并自己实现",
-                        },
-                        {
-                          icon: "headphones",
-                          name: "四级听力",
-                          category: "英语",
-                          materialType: "web",
-                          goal: "完成一组听力，回顾错题",
-                        },
-                      ] as const
-                    ).map((p) => (
-                      <button
-                        key={p.name}
-                        onClick={() =>
-                          setModal({
-                            kind: "choose-task",
-                            preset: {
-                              name: p.name,
-                              category: p.category,
-                              materialType: p.materialType,
-                              goal: p.goal,
-                            },
-                          })
-                        }
-                      >
-                        <span className="scenario-icon">
-                          <Icon name={p.icon} />
-                        </span>
-                        <span>
-                          {p.name}
-                          <small>{p.goal}</small>
-                        </span>
-                        <Icon name="plus" size={17} />
-                      </button>
-                    ))}
+                  <div>
+                    <span>本周专注</span>
+                    <strong>{duration(weekMs)}</strong>
                   </div>
-                )}
-              </section>
+                  <button
+                    className="text-btn"
+                    onClick={() => setPage("records")}
+                  >
+                    查看学习记录 <Icon name="arrow" size={15} />
+                  </button>
+                </section>
+              )}
+              {(otherTasks.length > 0 || !available.length) && (
+                <section className="task-section">
+                  <div className="section-heading">
+                    <h2>
+                      每周习惯与自由学习{" "}
+                      <span className="count">{otherTasks.length}</span>
+                    </h2>
+                  </div>
+                  {otherTasks.length ? (
+                    <div className="task-list">
+                      {taskTypes
+                        .filter(
+                          (type) =>
+                            type !== "once" &&
+                            otherTasks.some((t) => t.schedule.type === type),
+                        )
+                        .map((type) => (
+                          <section
+                            key={type}
+                            aria-label={taskKinds[type].name}
+                            className="task-group"
+                          >
+                            <div className="section-heading group-heading">
+                              <h3>{taskKinds[type].name}</h3>
+                              <button
+                                className="text-btn"
+                                onClick={() => setPage(taskKinds[type].page)}
+                              >
+                                管理{taskKinds[type].name}{" "}
+                                <Icon name="arrow" size={15} />
+                              </button>
+                            </div>
+                            {otherTasks
+                              .filter((t) => t.schedule.type === type)
+                              .map((t) => (
+                                <TaskRow key={t.id} task={t} />
+                              ))}
+                          </section>
+                        ))}
+                    </div>
+                  ) : (
+                    <div className="scenario-list">
+                      <p>从你熟悉的学习场景开始</p>
+                      {(
+                        [
+                          {
+                            icon: "book",
+                            name: "高数课本",
+                            category: "数学",
+                            materialType: "paper",
+                            goal: "阅读课本，完成两道例题",
+                          },
+                          {
+                            icon: "video",
+                            name: "算法教程",
+                            category: "算法",
+                            materialType: "web",
+                            goal: "理解一个算法，并自己实现",
+                          },
+                          {
+                            icon: "headphones",
+                            name: "四级听力",
+                            category: "英语",
+                            materialType: "web",
+                            goal: "完成一组听力，回顾错题",
+                          },
+                        ] as const
+                      ).map((p) => (
+                        <button
+                          key={p.name}
+                          onClick={() =>
+                            setModal({
+                              kind: "choose-task",
+                              preset: {
+                                name: p.name,
+                                category: p.category,
+                                materialType: p.materialType,
+                                goal: p.goal,
+                              },
+                            })
+                          }
+                        >
+                          <span className="scenario-icon">
+                            <Icon name={p.icon} />
+                          </span>
+                          <span>
+                            {p.name}
+                            <small>{p.goal}</small>
+                          </span>
+                          <Icon name="plus" size={17} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
               <p className="bottom-note">
                 <Icon name="leaf" size={15} />
                 学习时默认隐藏，只在需要时提醒你。
@@ -1231,7 +1405,7 @@ function App() {
                 </div>
                 <div className="setting-row">
                   <div className="update-info" role="status" aria-live="polite">
-                    <h3>当前版本 {s.update?.currentVersion || "0.1.3"}</h3>
+                    <h3>当前版本 {s.update?.currentVersion || "0.1.4"}</h3>
                     <p>
                       {s.update?.status === "checking"
                         ? "正在检查新版本…"
@@ -1391,7 +1565,7 @@ function App() {
                     <h3>
                       沉浸学习{" "}
                       <span className="version">
-                        {s.update?.currentVersion || "0.1.3"}
+                        {s.update?.currentVersion || "0.1.4"}
                       </span>
                     </h3>
                     <p>为纸质课本、在线课程和自己的节奏而设计。</p>

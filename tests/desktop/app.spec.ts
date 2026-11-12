@@ -223,6 +223,170 @@ test("closing main preserves process and scheduled island; reminder can start a 
   }
 });
 
+test("homepage prioritizes dated plans in the first viewport and keeps active focus first", async () => {
+  const current = Date.now();
+  let wall = current - 2 * 3600000;
+  const e = new Engine(
+    freshData(),
+    () => new Date(wall),
+    () => 0,
+  );
+  const save = (name: string, offset: number, enabled = true) => {
+    e.command({
+      type: "task.save",
+      task: task({
+        name,
+        category: name.includes("听力")
+          ? "英语"
+          : name.includes("算法")
+            ? "算法"
+            : "数学",
+        goal: name.includes("听力")
+          ? "完成一组听力，回顾错题"
+          : name.includes("算法")
+            ? "实现二分查找，整理复杂度"
+            : "理解极限定义，完成两道例题",
+        enabled,
+        schedule: {
+          type: "once",
+          at: new Date(current + offset).toISOString(),
+        },
+      }),
+    });
+    return e.data.tasks.at(-1)!;
+  };
+  const finished = save("已经完成的旧计划", -90 * 60000);
+  wall = current - 80 * 60000;
+  e.tick();
+  e.command({
+    type: "session.start",
+    taskId: finished.id,
+    reminderId: e.data.reminders[0].id,
+  });
+  e.command({
+    type: "session.end",
+    id: e.active!.id,
+    progress: "已完成",
+    nextStep: "",
+  });
+  e.command({
+    type: "task.save",
+    task: task({
+      name: "每周听力习惯",
+      category: "英语",
+      goal: "完成一组听力，整理错题",
+      schedule: { type: "weekly", days: [1, 3], time: "20:00" },
+    }),
+  });
+  save("下周算法练习", 7 * 86400000);
+  save("明天高数复习", 86400000);
+  save("今晚极限练习", 3600000);
+  save("已经到点的听力", -30 * 60000);
+  save("已停用的安排", 1800000, false);
+  const archived = save("已归档的安排", 1800000);
+  e.command({ type: "task.archive", id: archived.id });
+  const { app, page, dir } = await launch(e.data);
+  try {
+    const agenda = page.getByRole("region", { name: "日期计划", exact: true });
+    await expect(agenda.getByRole("article")).toHaveCount(3);
+    await expect(agenda.getByRole("heading", { level: 3 })).toHaveText([
+      "已经到点的听力",
+      "今晚极限练习",
+      "明天高数复习",
+    ]);
+    await expect(agenda.getByText("待开始", { exact: true })).toBeVisible();
+    await expect(
+      agenda.getByRole("button", {
+        name: "查看其余 1 项日期计划",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      agenda.getByRole("heading", { name: "已经完成的旧计划" }),
+    ).toHaveCount(0);
+    await expect(
+      agenda.getByRole("heading", { name: "已停用的安排" }),
+    ).toHaveCount(0);
+    const before = await agenda.boundingBox();
+    const focus = await page.locator(".focus-panel").boundingBox();
+    expect(before!.y).toBeLessThan(focus!.y);
+    await page.screenshot({
+      path: "test-results/home-plans.png",
+      animations: "disabled",
+    });
+    await page.setViewportSize({ width: 760, height: 600 });
+    const firstButton = agenda.getByRole("button", {
+      name: "开始学习：已经到点的听力",
+      exact: true,
+    });
+    const bounds = await firstButton.boundingBox();
+    expect(bounds!.y).toBeGreaterThanOrEqual(0);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(600);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: "test-results/home-plans-small.png",
+      animations: "disabled",
+    });
+    await firstButton.focus();
+    await page.waitForTimeout(1100);
+    await expect(firstButton).toBeFocused();
+    await page.setViewportSize({ width: 1180, height: 820 });
+    await firstButton.click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "开始学习", exact: true })
+      .click();
+    await expect(page.getByText("专注进行中", { exact: true })).toBeVisible();
+    await expect(
+      agenda.getByRole("heading", { name: "已经到点的听力" }),
+    ).toHaveCount(0);
+    const activeFocus = await page.locator(".focus-panel").boundingBox();
+    const after = await agenda.boundingBox();
+    expect(activeFocus!.y).toBeLessThan(after!.y);
+    await expect(
+      agenda.getByRole("button", {
+        name: "开始学习：今晚极限练习",
+        exact: true,
+      }),
+    ).toBeDisabled();
+    await page.screenshot({
+      path: "test-results/home-plans-active.png",
+      animations: "disabled",
+    });
+    await page.getByRole("button", { name: "结束并记录", exact: true }).click();
+    await page.getByRole("button", { name: "结束并保存", exact: true }).click();
+    await agenda
+      .getByRole("button", { name: "全部日期计划", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "日期计划", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "已经完成的旧计划", exact: true }),
+    ).toBeVisible();
+    await page.evaluate(async () => {
+      const snapshot = await window.study.snapshot();
+      await window.study.command({
+        type: "task.archive",
+        id: snapshot.tasks.find((t) => t.name === "每周听力习惯")!.id,
+      });
+    });
+    await page.getByRole("button", { name: "今天", exact: true }).click();
+    await expect(page.locator(".focus-panel")).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "学习概况" })).toBeVisible();
+    await page.screenshot({
+      path: "test-results/home-plans-only.png",
+      animations: "disabled",
+    });
+  } finally {
+    await cleanup(app, dir);
+  }
+});
+
 test("existing weekly, dated and unscheduled tasks stay separate after edit and restart", async () => {
   const e = new Engine(freshData());
   e.command({
