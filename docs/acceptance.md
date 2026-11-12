@@ -147,7 +147,7 @@
 | UPDATE-04 | 旧设置补齐 autoUpdate、保留显式关闭；设置页开关重启后保留 | 通过（0.1.3 自动化） |
 | UPDATE-05 | 真实 electron-updater 下载本轮安装包，损坏数据被 SHA-512 拒绝，正确下载后就绪且不自动退出 | 通过（0.1.3 自动化） |
 | UPDATE-06 | Windows 安装包及配套 latest.yml、blockmap 一同生成；原有学习与提醒回归通过 | 通过（0.1.3 自动化） |
-| UPDATE-07 | GitHub Actions 构建、检查通过后发布包含完整安装包和元数据的正式 Release | 待本轮验证 |
+| UPDATE-07 | GitHub Actions 构建、检查通过后发布包含完整安装包和元数据的正式 Release | 通过（GitHub Actions） |
 | UPDATE-08 | 实际安装旧版，收到新版提示，确认安装后重启；任务/进度/历史保留且学习暂停 | 尚未验证（需真实安装升级） |
 | UPDATE-09 | Windows 权限拒绝、磁盘不足、断电或系统终止安装后恢复 | 尚未验证（系统人工验收） |
 
@@ -158,3 +158,9 @@
 【方案默认值】`npm run test:updates` 通过：使用真实 electron-updater 6.8.11 与本地回环服务器下载本轮完整安装包，验证 404、故意损坏首字节后的 SHA-512 拒绝、正确数据重试、下载文件与原安装包摘要一致、就绪后重复检查无额外请求、无自动退出。测试专用 AppAdapter 和本地 HTTP 地址仅在测试脚本，不进入发布应用；生产地址保持 GitHub HTTPS。
 
 【方案默认值】安装包 `release/StudyCompanion-0.1.3-Setup.exe`，122371697 字节，SHA-256 `CF38322DA5A68AAA26C175E63680E020A3482E9357636A88CDD7BDB9876CB05F`。同次构建生成 latest.yml、blockmap；已检查打包的 app-update.yml 指向公开 GoahJack/Immersive-Learning。源码上传与正式 Release 发布结果另行记录，UPDATE-07 未执行前不标记通过。
+
+【方案默认值】正式发布验证：GitHub Actions [Windows release / 43168944089](https://github.com/GoahJack/Immersive-Learning/actions/runs/43168944089) 全部成功，源提交 e81d820，核心测试、8 项打包桌面测试及真实下载回归通过后公开 [v0.1.3](https://github.com/GoahJack/Immersive-Learning/releases/tag/v0.1.3)。资产包含安装包、blockmap、latest.yml 和 SHA256SUMS.txt。
+
+【方案默认值】云端正式安装包大小 122371743 字节，SHA-256 `c26c3d350da634ff2068eb1438882d415cb1fb814d1ab0d6105772d8ceed52fb`，与本机构建区分记录：不同构建的安装包和元数据不能混用。公开版本不覆盖；后续修改软件需提高版本号。
+
+【方案默认值】本机通过真实 GitHub provider（非本地服务器）再次检查并下载正式 v0.1.3，结果 ready，文件大小及 SHA-256 均与 Release 的 SHA256SUMS.txt 一致。检查采用隔离版本适配器触发新版检测，没有改写发布应用版本或触发安装，验证后清理下载测试缓存。该证据证明生产更新源可用，不替代 UPDATE-08 / UPDATE-09 的真实系统安装验收。

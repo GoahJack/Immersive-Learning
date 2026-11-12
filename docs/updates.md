@@ -29,3 +29,7 @@
 【方案默认值】不允许自动降级，不提供旧版本覆盖同一版本号的回滚。若正式版本有问题，修复后提高版本号并重新发布。用户数据保持 schemaVersion 1；未来迁移前需备份并单独验证。不要删除或覆盖用户学习文件来解决更新问题。
 
 【方案默认值】当前个人试用版本尚无 Authenticode 代码签名证书，依靠 GitHub HTTPS 和安装包 SHA-512 校验，不宣称具备发行者签名。签名证书、首次真实升级、安装权限及长期试用的状态以[验收记录](acceptance.md)为准。
+
+## 当前发布状态
+
+【方案默认值】2026-11-12 已通过仓库临时 Token 完成首个 [v0.1.3 正式发布](https://github.com/GoahJack/Immersive-Learning/releases/tag/v0.1.3)，[工作流记录](https://github.com/GoahJack/Immersive-Learning/actions/runs/43168944089)全部成功。更新源已开通，不再需要手动上传每个安装包；之后在提高版本并完成代码修改后，触发发布工作流即可。实际安装升级体验仍按验收清单验证。

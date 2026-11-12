@@ -6,7 +6,7 @@
 
 ## 使用
 
-安装包位于 `release/StudyCompanion-0.1.3-Setup.exe`；解压版目录为 `release/win-unpacked/`，其中 `沉浸学习.exe` 可以直接启动，须保留整个目录。打包产物不纳入版本控制。
+正式安装包可从 [GitHub Releases](https://github.com/GoahJack/Immersive-Learning/releases/latest) 下载。本机构建安装包位于 `release/StudyCompanion-0.1.3-Setup.exe`；解压版目录为 `release/win-unpacked/`，其中 `沉浸学习.exe` 可以直接启动，须保留整个目录。打包产物不纳入版本控制。
 
 1. 在“每周习惯”创建固定星期练习，在“日期计划”创建某天的一次性安排；不设提醒的内容放在“自由学习”。填写材料、目标和时长。
 2. 到点从灵动岛开始，或从“今天”手动开始；可以先学 5 分钟。
